@@ -14,24 +14,35 @@ async def start(message: types.Message):
     await message.answer(basic.START_TEXT)
 
 
-async def get_photos(message: types.Message, bot: Bot):
+async def get_photo(message: types.Message, bot: Bot):
     user_name = message.from_user.username  # Получаем имя пользователя
-    folder_path = f'media/{user_name}'  # Создаем путь к папке с именем пользователя
-    if not os.path.exists(folder_path):  # Проверяем, существует ли папка
-        os.makedirs(folder_path)  # Создаем папку, если она не существует
-    folder_path += '/photos'
-    await message.answer(f'Photos added to {user_name} portfolio')  # Отправляем сообщение с именем пользователя
+    folder_path = 'media/'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    # folder_path += f'{type}/'
+    # if not os.path.exists(folder_path):
+    #     os.makedirs(folder_path)
+    folder_path += f'{user_name}/'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    folder_path += f'photos'
 
-    if not os.path.exists(folder_path):  # Проверяем, существует ли папка
-        os.makedirs(folder_path)  # Создаем папку, если она не существует
 
-    for photo in message.photo:
-        file = await bot.get_file(photo.file_id)
-        unique_file_name = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3] + '.jpg'
-        await bot.download_file(file.file_path, f'{folder_path}/{unique_file_name}')
-        # Добавляем небольшую задержку, чтобы имена файлов были уникальными
-        await asyncio.sleep(0.001)
+    # Проверяем, существует ли папка, и создаем ее, если необходимо
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
+    # Выбираем фото с наибольшим разрешением
+    largest_photo = message.photo[-1]
+
+    file = await bot.get_file(largest_photo.file_id)
+    unique_file_name = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3] + '.jpg'
+    await bot.download_file(file.file_path, f'{folder_path}/{unique_file_name}')
+
+    # Добавляем небольшую задержку, чтобы имена файлов были уникальными
+    await asyncio.sleep(0.001)
+
+    await message.answer(f'Photo added to {user_name} portfolio') 
 
 async def get_video(message: types.Message, bot: Bot):
     user_name = message.from_user.username  # Получаем имя пользователя

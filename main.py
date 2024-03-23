@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 
 import config
-from core.hendlers.basic import start, get_photos, privacy_rules, get_video, model_recruiter_experience, about_platform,\
+from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
     photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
 from core.hendlers.callback import check_model_experience, model_order
 from core.utils.comands import set_commands
@@ -43,7 +43,7 @@ async def main():
 
     dp.callback_query.register(check_model_experience, F.data.startswith('model_experience_'))
 
-    dp.message.register(get_photos, F.photo)
+    dp.message.register(get_photo, F.photo)
 
     dp.message.register(get_video, F.video)
 
