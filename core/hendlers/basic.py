@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 
 from aiogram import types, Bot, F
+
+import config
 from core.texts import basic
 from core.keyboards.inlines import model_experience
 from core.texts.models.texts import MODELING_TYPE_CHOICE, ABOUT_PLATFORM, MODEL_ORDER_DEFAULT, MODEL_ORDER_WEBCAM, \
@@ -41,7 +43,7 @@ async def get_photo(message: types.Message, bot: Bot):
 
     # Добавляем небольшую задержку, чтобы имена файлов были уникальными
     await asyncio.sleep(0.001)
-
+    await bot.send_message(config.ADMIN_CHAT_ID, text=f'{user_name}')
     await message.answer(f'Photo added to {user_name} portfolio') 
 
 async def get_video(message: types.Message, bot: Bot):
