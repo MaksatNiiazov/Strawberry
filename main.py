@@ -1,9 +1,9 @@
 import requests
 import time
-import config
+import asyncio
 import logging
+import config
 
-# Импорт ваших функций
 from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform, \
     photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
 from core.hendlers.callback import check_model_experience, model_order
@@ -36,15 +36,30 @@ def get_updates(offset=None):
     return response.json()
 
 
+# Моделируем объект Bot для передачи в set_commands
+class Bot:
+    def __init__(self, token):
+        self.token = token
+        self.api_url = f"https://api.telegram.org/bot{token}"
+
+    def send_message(self, chat_id, text, parse_mode='HTML'):
+        payload = {
+            'chat_id': chat_id,
+            'text': text,
+            'parse_mode': parse_mode
+        }
+        return requests.post(f"{self.api_url}/sendMessage", json=payload).json()
+
+
 # Обработчик команд и сообщений
-def handle_updates(updates):
+def handle_updates(updates, bot):
     for update in updates['result']:
         if 'message' in update:
             chat_id = update['message']['chat']['id']
             text = update['message'].get('text', '')
 
             if text.startswith('/'):
-                handle_command(chat_id, text)
+                handle_command(chat_id, text, bot)
             elif 'photo' in update['message']:
                 get_photo(chat_id, update['message']['photo'])
             elif 'video' in update['message']:
@@ -59,7 +74,7 @@ def handle_updates(updates):
 
 
 # Обработка команд
-def handle_command(chat_id, text):
+def handle_command(chat_id, text, bot):
     if text == '/start':
         start(chat_id)
     elif text == '/model':
@@ -80,8 +95,9 @@ def handle_command(chat_id, text):
 
 # Функция для запуска бота
 async def start_bot():
-    # Установка команд
-    set_commands()
+    bot = Bot(config.TELEGRAM_API_KEY)  # Создаем объект Bot
+    set_commands(bot)  # Передаем объект bot в set_commands
+
     send_message(config.ADMIN_CHAT_ID, "Бот запущен")
 
     last_update_id = None
@@ -89,7 +105,7 @@ async def start_bot():
         updates = get_updates(last_update_id)
         if updates['ok'] and updates['result']:
             last_update_id = updates['result'][-1]['update_id']
-            handle_updates(updates)
+            handle_updates(updates, bot)
         time.sleep(1)
 
 
@@ -108,6 +124,4 @@ async def main():
 
 # Запуск бота
 if __name__ == "__main__":
-    import asyncio
-
     asyncio.run(main())
