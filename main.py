@@ -1,14 +1,14 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 import config
-from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
+from core.handlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform, \
     photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
-from core.hendlers.callback import check_model_experience, model_order
-from core.utils.comands import set_commands
+from core.handlers.callback import check_model_experience, model_order
+from core.utils.commands import set_commands
 
 
 async def start_bot(bot: Bot):
@@ -26,7 +26,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
 
     bot = Bot(API_TOKEN, parse_mode='HTML')
-    dp = Dispatcher()
+    dp = Dispatcher(bot)
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
 
@@ -35,7 +35,6 @@ async def main():
     dp.message.register(photographer_recruiter_experience, Command(commands=['photographer']))
     dp.message.register(makeup_recruiter_experience, Command(commands=['makeup']))
     dp.message.register(stylist_recruiter_experience, Command(commands=['stylist']))
-    dp.message.register(model_recruiter_experience, Command(commands=['model']))
     dp.message.register(about_platform, Command(commands=['about_platform']))
     dp.message.register(equipment_help, Command(commands=['equipment']))
 
