@@ -1,66 +1,113 @@
 import requests
 import time
 import config
+import logging
+
+# Импорт ваших функций
+from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform, \
+    photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
+from core.hendlers.callback import check_model_experience, model_order
+from core.utils.comands import set_commands
+
+# Логирование
+logging.basicConfig(level=logging.INFO)
+
+# Базовый URL для запросов к Telegram API
+API_URL = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}"
+
 
 # Функция для отправки сообщений
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/sendMessage"
-    data = {
+def send_message(chat_id, text, parse_mode='HTML'):
+    payload = {
         'chat_id': chat_id,
         'text': text,
-        'parse_mode': 'HTML'
+        'parse_mode': parse_mode
     }
-    response = requests.post(url, json=data)
-    print("Message sent: ", response.text)  # Для отладки
-
-# Функция для установки команд бота
-def set_commands():
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/setMyCommands"
-    commands = [
-        {'command': 'start', 'description': 'Начать работу'},
-        {'command': 'model', 'description': 'Информация для моделей'},
-        {'command': 'photographer', 'description': 'Информация для фотографов'},
-        {'command': 'makeup', 'description': 'Информация для визажистов'},
-        {'command': 'stylist', 'description': 'Информация для стилистов'},
-        {'command': 'about_platform', 'description': 'О платформе'},
-        {'command': 'equipment', 'description': 'Помощь с оборудованием'},
-        {'command': 'privacy_rules', 'description': 'Правила конфиденциальности'}
-    ]
-    response = requests.post(url, json={'commands': commands})
-    print("Commands set: ", response.text)  # Для отладки
-
-# Функция для получения обновлений от Telegram
-def get_updates(last_update_id):
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/getUpdates?timeout=100"
-    if last_update_id:
-        url += f"&offset={last_update_id + 1}"
-    response = requests.get(url)
+    response = requests.post(f"{API_URL}/sendMessage", json=payload)
     return response.json()
 
+
+# Функция для получения обновлений
+def get_updates(offset=None):
+    params = {'timeout': 100}
+    if offset:
+        params['offset'] = offset + 1
+    response = requests.get(f"{API_URL}/getUpdates", params=params)
+    return response.json()
+
+
+# Обработчик команд и сообщений
+def handle_updates(updates):
+    for update in updates['result']:
+        if 'message' in update:
+            chat_id = update['message']['chat']['id']
+            text = update['message'].get('text', '')
+
+            if text.startswith('/'):
+                handle_command(chat_id, text)
+            elif 'photo' in update['message']:
+                get_photo(chat_id, update['message']['photo'])
+            elif 'video' in update['message']:
+                get_video(chat_id, update['message']['video'])
+
+        if 'callback_query' in update:
+            callback_data = update['callback_query']['data']
+            if callback_data.startswith('model_order_'):
+                model_order(update['callback_query'])
+            elif callback_data.startswith('model_experience_'):
+                check_model_experience(update['callback_query'])
+
+
 # Обработка команд
-def handle_updates(update):
-    message = update['message']
-    chat_id = message['chat']['id']
-    text = message.get('text')
-
+def handle_command(chat_id, text):
     if text == '/start':
-        send_message(chat_id, "Привет! Я ваш бот.")
+        start(chat_id)
     elif text == '/model':
-        send_message(chat_id, "Это информация для моделей.")
-    # Добавьте другие команды по аналогии
+        model_recruiter_experience(chat_id)
+    elif text == '/photographer':
+        photographer_recruiter_experience(chat_id)
+    elif text == '/makeup':
+        makeup_recruiter_experience(chat_id)
+    elif text == '/stylist':
+        stylist_recruiter_experience(chat_id)
+    elif text == '/about_platform':
+        about_platform(chat_id)
+    elif text == '/equipment':
+        equipment_help(chat_id)
+    elif text == '/privacy_rules':
+        privacy_rules(chat_id)
 
-# Основной цикл
-def main():
+
+# Функция для запуска бота
+async def start_bot():
+    # Установка команд
+    set_commands()
+    send_message(config.ADMIN_CHAT_ID, "Бот запущен")
+
     last_update_id = None
-    set_commands()  # Установка команд на старте бота
-
     while True:
         updates = get_updates(last_update_id)
-        if updates["ok"] and updates["result"]:
-            for update in updates["result"]:
-                last_update_id = update['update_id']
-                handle_updates(update)
+        if updates['ok'] and updates['result']:
+            last_update_id = updates['result'][-1]['update_id']
+            handle_updates(updates)
         time.sleep(1)
 
+
+# Функция для остановки бота
+async def stop_bot():
+    send_message(config.ADMIN_CHAT_ID, "Бот отключен")
+
+
+# Основной цикл
+async def main():
+    try:
+        await start_bot()
+    finally:
+        await stop_bot()
+
+
+# Запуск бота
 if __name__ == "__main__":
-    main()
+    import asyncio
+
+    asyncio.run(main())
