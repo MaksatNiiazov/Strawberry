@@ -1,14 +1,14 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 
 import config
-from core.handlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
+from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
     photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
-from core.handlers.callback import check_model_experience, model_order
-from core.utils.commands import set_commands
+from core.hendlers.callback import check_model_experience, model_order
+from core.utils.comands import set_commands
 
 async def start_bot(dispatcher):
     bot = dispatcher.bot
