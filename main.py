@@ -96,7 +96,7 @@ async def handle_command(chat_id, text, bot):
 # Функция для запуска бота
 async def start_bot():
     bot = Bot(config.TELEGRAM_API_KEY)  # Создаем объект Bot
-    await set_commands(bot)  # Передаем объект bot в set_commands
+    set_commands(bot)  # Устанавливаем команды через API
 
     await send_message(config.ADMIN_CHAT_ID, "Бот запущен")
 
