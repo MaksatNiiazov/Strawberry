@@ -17,7 +17,7 @@ API_URL = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}"
 
 
 # Функция для отправки сообщений
-def send_message(chat_id, text, parse_mode='HTML'):
+async def send_message(chat_id, text, parse_mode='HTML'):
     payload = {
         'chat_id': chat_id,
         'text': text,
@@ -42,7 +42,7 @@ class Bot:
         self.token = token
         self.api_url = f"https://api.telegram.org/bot{token}"
 
-    def send_message(self, chat_id, text, parse_mode='HTML'):
+    async def send_message(self, chat_id, text, parse_mode='HTML'):
         payload = {
             'chat_id': chat_id,
             'text': text,
@@ -52,66 +52,66 @@ class Bot:
 
 
 # Обработчик команд и сообщений
-def handle_updates(updates, bot):
+async def handle_updates(updates, bot):
     for update in updates['result']:
         if 'message' in update:
             chat_id = update['message']['chat']['id']
             text = update['message'].get('text', '')
 
             if text.startswith('/'):
-                handle_command(chat_id, text, bot)
+                await handle_command(chat_id, text, bot)
             elif 'photo' in update['message']:
-                get_photo(chat_id, update['message']['photo'])
+                await get_photo(chat_id, update['message']['photo'])
             elif 'video' in update['message']:
-                get_video(chat_id, update['message']['video'])
+                await get_video(chat_id, update['message']['video'])
 
         if 'callback_query' in update:
             callback_data = update['callback_query']['data']
             if callback_data.startswith('model_order_'):
-                model_order(update['callback_query'])
+                await model_order(update['callback_query'])
             elif callback_data.startswith('model_experience_'):
-                check_model_experience(update['callback_query'])
+                await check_model_experience(update['callback_query'])
 
 
 # Обработка команд
-def handle_command(chat_id, text, bot):
+async def handle_command(chat_id, text, bot):
     if text == '/start':
-        start(chat_id)
+        await start(chat_id)
     elif text == '/model':
-        model_recruiter_experience(chat_id)
+        await model_recruiter_experience(chat_id)
     elif text == '/photographer':
-        photographer_recruiter_experience(chat_id)
+        await photographer_recruiter_experience(chat_id)
     elif text == '/makeup':
-        makeup_recruiter_experience(chat_id)
+        await makeup_recruiter_experience(chat_id)
     elif text == '/stylist':
-        stylist_recruiter_experience(chat_id)
+        await stylist_recruiter_experience(chat_id)
     elif text == '/about_platform':
-        about_platform(chat_id)
+        await about_platform(chat_id)
     elif text == '/equipment':
-        equipment_help(chat_id)
+        await equipment_help(chat_id)
     elif text == '/privacy_rules':
-        privacy_rules(chat_id)
+        await privacy_rules(chat_id)
 
 
 # Функция для запуска бота
 async def start_bot():
     bot = Bot(config.TELEGRAM_API_KEY)  # Создаем объект Bot
-    set_commands(bot)  # Передаем объект bot в set_commands
+    await set_commands(bot)  # Передаем объект bot в set_commands
 
-    send_message(config.ADMIN_CHAT_ID, "Бот запущен")
+    await send_message(config.ADMIN_CHAT_ID, "Бот запущен")
 
     last_update_id = None
     while True:
         updates = get_updates(last_update_id)
         if updates['ok'] and updates['result']:
             last_update_id = updates['result'][-1]['update_id']
-            handle_updates(updates, bot)
+            await handle_updates(updates, bot)
         time.sleep(1)
 
 
 # Функция для остановки бота
 async def stop_bot():
-    send_message(config.ADMIN_CHAT_ID, "Бот отключен")
+    await send_message(config.ADMIN_CHAT_ID, "Бот отключен")
 
 
 # Основной цикл
