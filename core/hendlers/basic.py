@@ -5,7 +5,6 @@ import asyncio
 import config
 
 from core.texts import basic
-from core.keyboards.inlines import model_experience
 from core.texts.models.texts import MODELING_TYPE_CHOICE, ABOUT_PLATFORM, MODEL_ORDER_DEFAULT, MODEL_ORDER_WEBCAM, \
     MODEL_EQUIPMENT
 from core.texts.photographer.texts import PHOTOGRAPHER_ORDER_DEFAULT
