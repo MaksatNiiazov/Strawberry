@@ -10,23 +10,20 @@ from core.hendlers.basic import start, get_photo, privacy_rules, get_video, mode
 from core.hendlers.callback import check_model_experience, model_order
 from core.utils.comands import set_commands
 
-
 async def start_bot(bot: Bot):
     await set_commands(bot)
     await bot.send_message(config.ADMIN_CHAT_ID, text='Бот запущен')
 
-
 async def stop_bot(bot: Bot):
     await bot.send_message(config.ADMIN_CHAT_ID, text='Бот отключен')
-
 
 async def main():
     API_TOKEN = config.TELEGRAM_API_KEY
 
     logging.basicConfig(level=logging.INFO)
+    bot = Bot(token=API_TOKEN, parse_mode='HTML')
+    dp = Dispatcher(bot)
 
-    bot = Bot(API_TOKEN, parse_mode='HTML')
-    dp = Dispatcher()
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
 
@@ -39,20 +36,16 @@ async def main():
     dp.message.register(equipment_help, Command(commands=['equipment']))
 
     dp.callback_query.register(model_order, F.data.startswith('model_order_'))
-
     dp.callback_query.register(check_model_experience, F.data.startswith('model_experience_'))
 
     dp.message.register(get_photo, F.photo)
-
     dp.message.register(get_video, F.video)
-
     dp.message.register(privacy_rules, Command(commands=['privacy_rules']))
 
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling()
     finally:
         await bot.session.close()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
