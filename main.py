@@ -1,59 +1,66 @@
-import asyncio
-import logging
-
-from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
-
+import requests
+import time
 import config
-from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
-    photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
-from core.hendlers.callback import check_model_experience, model_order
-from core.utils.comands import set_commands
 
-async def start_bot(dispatcher):
-    bot = dispatcher.bot
-    await set_commands(bot)
-    await bot.send_message(config.ADMIN_CHAT_ID, text='Бот запущен')
+# Функция для отправки сообщений
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/sendMessage"
+    data = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML'
+    }
+    response = requests.post(url, json=data)
+    print("Message sent: ", response.text)  # Для отладки
 
-async def stop_bot(dispatcher):
-    bot = dispatcher.bot
-    await bot.send_message(config.ADMIN_CHAT_ID, text='Бот отключен')
+# Функция для установки команд бота
+def set_commands():
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/setMyCommands"
+    commands = [
+        {'command': 'start', 'description': 'Начать работу'},
+        {'command': 'model', 'description': 'Информация для моделей'},
+        {'command': 'photographer', 'description': 'Информация для фотографов'},
+        {'command': 'makeup', 'description': 'Информация для визажистов'},
+        {'command': 'stylist', 'description': 'Информация для стилистов'},
+        {'command': 'about_platform', 'description': 'О платформе'},
+        {'command': 'equipment', 'description': 'Помощь с оборудованием'},
+        {'command': 'privacy_rules', 'description': 'Правила конфиденциальности'}
+    ]
+    response = requests.post(url, json={'commands': commands})
+    print("Commands set: ", response.text)  # Для отладки
 
-async def main():
-    API_TOKEN = config.TELEGRAM_API_KEY
+# Функция для получения обновлений от Telegram
+def get_updates(last_update_id):
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/getUpdates?timeout=100"
+    if last_update_id:
+        url += f"&offset={last_update_id + 1}"
+    response = requests.get(url)
+    return response.json()
 
-    logging.basicConfig(level=logging.INFO)
+# Обработка команд
+def handle_updates(update):
+    message = update['message']
+    chat_id = message['chat']['id']
+    text = message.get('text')
 
-    # Initialize Bot and Dispatcher
-    bot = Bot(token=API_TOKEN, parse_mode='HTML')
-    dp = Dispatcher()
+    if text == '/start':
+        send_message(chat_id, "Привет! Я ваш бот.")
+    elif text == '/model':
+        send_message(chat_id, "Это информация для моделей.")
+    # Добавьте другие команды по аналогии
 
-    # Registering handlers
-    dp.startup.register(start_bot)
-    dp.shutdown.register(stop_bot)
+# Основной цикл
+def main():
+    last_update_id = None
+    set_commands()  # Установка команд на старте бота
 
-    dp.message.register(start, Command(commands=['start']))
-    dp.message.register(model_recruiter_experience, Command(commands=['model']))
-    dp.message.register(photographer_recruiter_experience, Command(commands=['photographer']))
-    dp.message.register(makeup_recruiter_experience, Command(commands=['makeup']))
-    dp.message.register(stylist_recruiter_experience, Command(commands=['stylist']))
-    dp.message.register(about_platform, Command(commands=['about_platform']))
-    dp.message.register(equipment_help, Command(commands=['equipment']))
-
-    dp.callback_query.register(model_order, F.data.startswith('model_order_'))
-    dp.callback_query.register(check_model_experience, F.data.startswith('model_experience_'))
-
-    dp.message.register(get_photo, F.photo)
-    dp.message.register(get_video, F.video)
-    dp.message.register(privacy_rules, Command(commands=['privacy_rules']))
-
-    try:
-        # Start polling
-        await dp.start_polling()
-    finally:
-        # Close the session
-        await dp.storage.close()
-        await dp.bot.session.close()
+    while True:
+        updates = get_updates(last_update_id)
+        if updates["ok"] and updates["result"]:
+            for update in updates["result"]:
+                last_update_id = update['update_id']
+                handle_updates(update)
+        time.sleep(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
