@@ -1,29 +1,34 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 
 import config
-from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform, \
+from core.handlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
     photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
-from core.hendlers.callback import check_model_experience, model_order
-from core.utils.comands import set_commands
+from core.handlers.callback import check_model_experience, model_order
+from core.utils.commands import set_commands
 
-async def start_bot(bot: Bot):
+async def start_bot(dispatcher):
+    bot = dispatcher.bot
     await set_commands(bot)
     await bot.send_message(config.ADMIN_CHAT_ID, text='Бот запущен')
 
-async def stop_bot(bot: Bot):
+async def stop_bot(dispatcher):
+    bot = dispatcher.bot
     await bot.send_message(config.ADMIN_CHAT_ID, text='Бот отключен')
 
 async def main():
     API_TOKEN = config.TELEGRAM_API_KEY
 
     logging.basicConfig(level=logging.INFO)
+
+    # Initialize Bot and Dispatcher
     bot = Bot(token=API_TOKEN, parse_mode='HTML')
     dp = Dispatcher()
 
+    # Registering handlers
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
 
@@ -43,9 +48,12 @@ async def main():
     dp.message.register(privacy_rules, Command(commands=['privacy_rules']))
 
     try:
+        # Start polling
         await dp.start_polling()
     finally:
-        await bot.session.close()
+        # Close the session
+        await dp.storage.close()
+        await dp.bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
