@@ -26,7 +26,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
 
     bot = Bot(API_TOKEN, parse_mode='HTML')
-    dp = Dispatcher(bot)
+    dp = Dispatcher()
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
 
