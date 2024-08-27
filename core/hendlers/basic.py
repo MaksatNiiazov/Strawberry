@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import datetime
 from telegram import Update, Bot, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, CallbackQueryHandler, Filters
 
 import config
 from core.texts import basic
