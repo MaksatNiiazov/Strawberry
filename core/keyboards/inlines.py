@@ -1,16 +1,18 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
-model_experience = InlineKeyboardMarkup(inline_keyboard=[
+def model_experience():
+    keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 text='Меня интересует только первый вариант',
                 callback_data='model_order_default'
-            ),
+            )
         ],
         [
             InlineKeyboardButton(
                 text='Я рассматриваю второй вариант',
                 callback_data='model_order_webcam'
-            ),
+            )
         ]
     ])
+    return keyboard

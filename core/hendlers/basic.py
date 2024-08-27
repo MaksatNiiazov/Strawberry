@@ -1,8 +1,8 @@
-import asyncio
 import os
+import logging
 from datetime import datetime
-
-from aiogram import types, Bot, F
+from telegram import Update, Bot, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, CallbackQueryHandler
 
 import config
 from core.texts import basic
@@ -12,87 +12,87 @@ from core.texts.models.texts import MODELING_TYPE_CHOICE, ABOUT_PLATFORM, MODEL_
 from core.texts.photographer.texts import PHOTOGRAPHER_ORDER_DEFAULT
 
 
-async def start(message: types.Message):
-    await message.answer(basic.START_TEXT)
+def start(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.effective_chat.id, text=basic.START_TEXT)
 
 
-async def get_photo(message: types.Message, bot: Bot):
-    user_name = message.from_user.username  # Получаем имя пользователя
-    folder_path = 'media/'
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-    # folder_path += f'{type}/'
-    # if not os.path.exists(folder_path):
-    #     os.makedirs(folder_path)
-    folder_path += f'{user_name}/'
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-    folder_path += f'photos'
-
-
-    # Проверяем, существует ли папка, и создаем ее, если необходимо
+def get_photo(update: Update, context: CallbackContext):
+    user_name = update.message.from_user.username
+    folder_path = f'media/{user_name}/photos/'
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    # Выбираем фото с наибольшим разрешением
-    largest_photo = message.photo[-1]
-
-    file = await bot.get_file(largest_photo.file_id)
+    largest_photo = update.message.photo[-1]
+    file = context.bot.get_file(largest_photo.file_id)
     unique_file_name = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3] + '.jpg'
-    await bot.download_file(file.file_path, f'{folder_path}/{unique_file_name}')
+    file.download(custom_path=f'{folder_path}/{unique_file_name}')
+    context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=f'{user_name}')
+    update.message.reply_text(f'Photo added to {user_name} portfolio')
 
-    # Добавляем небольшую задержку, чтобы имена файлов были уникальными
-    await asyncio.sleep(0.001)
-    await bot.send_message(config.ADMIN_CHAT_ID, text=f'{user_name}')
-    await message.answer(f'Photo added to {user_name} portfolio')
 
-async def get_video(message: types.Message, bot: Bot):
-    user_name = message.from_user.username  # Получаем имя пользователя
-    folder_path = f'media/{user_name}/videos/'  # Создаем путь к папке с именем пользователя
-    if not os.path.exists(folder_path):  # Проверяем, существует ли папка
-        os.makedirs(folder_path)  # Создаем папку, если она не существует
-    await message.answer(f'Video added to {user_name} portfolio')  # Отправляем сообщение с именем пользователя
+def get_video(update: Update, context: CallbackContext):
+    user_name = update.message.from_user.username
+    folder_path = f'media/{user_name}/videos/'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
-    if not os.path.exists(folder_path):  # Проверяем, существует ли папка
-        os.makedirs(folder_path)  # Создаем папку, если она не существует
-
-    # Обрабатываем видеофайл
-    file = await bot.get_file(message.video.file_id)
+    file = context.bot.get_file(update.message.video.file_id)
     unique_file_name = datetime.now().strftime('%Y%m%d%H%M%S') + '.mp4'
-    await bot.download_file(file.file_path, f'{folder_path}/{unique_file_name}')  # Сохраняем видео с уникальным именем
+    file.download(custom_path=f'{folder_path}/{unique_file_name}')
+    update.message.reply_text(f'Video added to {user_name} portfolio')
 
 
-### MODEL ###
-
-async def model_recruiter_experience(message: types.Message, bot: Bot):
-    await message.answer(MODELING_TYPE_CHOICE, reply_markup=model_experience)
-
-
-async def privacy_rules(message: types.Message):
-    await message.answer(basic.CONFIDENTIALITY_POLICY)
+def model_recruiter_experience(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    reply_markup = model_experience()  # Вызов функции для получения клавиатуры
+    update.message.reply_text(MODELING_TYPE_CHOICE, reply_markup=reply_markup)
 
 
-async def about_platform(message: types.Message):
-    await message.answer(ABOUT_PLATFORM)
+def privacy_rules(update: Update, context: CallbackContext):
+    update.message.reply_text(basic.CONFIDENTIALITY_POLICY)
 
 
-### MODEL_END ###
-
-### PHOTOGRAPHER ###
-
-async def photographer_recruiter_experience(message: types.Message):
-    await message.answer(PHOTOGRAPHER_ORDER_DEFAULT)
-
-### PHOTOGRAPHER_END ###
+def about_platform(update: Update, context: CallbackContext):
+    update.message.reply_text(ABOUT_PLATFORM)
 
 
-async def makeup_recruiter_experience(message: types.Message):
-    await message.answer('В данный момент, к сожалению, нет открытых вакансий на позицию визажиста')
+def photographer_recruiter_experience(update: Update, context: CallbackContext):
+    update.message.reply_text(PHOTOGRAPHER_ORDER_DEFAULT)
 
 
-async def stylist_recruiter_experience(message: types.Message):
-    await message.answer('В данный момент, к сожалению, нет открытых вакансий на позицию стилиста')
+def makeup_recruiter_experience(update: Update, context: CallbackContext):
+    update.message.reply_text('В данный момент, к сожалению, нет открытых вакансий на позицию визажиста')
 
 
-async def equipment_help(message: types.Message):
-    await message.answer(MODEL_EQUIPMENT)
+def stylist_recruiter_experience(update: Update, context: CallbackContext):
+    update.message.reply_text('В данный момент, к сожалению, нет открытых вакансий на позицию стилиста')
+
+
+def equipment_help(update: Update, context: CallbackContext):
+    update.message.reply_text(MODEL_EQUIPMENT)
+
+
+def main():
+    API_TOKEN = config.TELEGRAM_API_KEY
+    logging.basicConfig(level=logging.INFO)
+    updater = Updater(token=API_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    # Регистрация обработчиков команд
+    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(MessageHandler(Filters.photo, get_photo))
+    dp.add_handler(MessageHandler(Filters.video, get_video))
+    dp.add_handler(CommandHandler('model', model_recruiter_experience))
+    dp.add_handler(CommandHandler('privacy', privacy_rules))
+    dp.add_handler(CommandHandler('about', about_platform))
+    dp.add_handler(CommandHandler('photographer', photographer_recruiter_experience))
+    dp.add_handler(CommandHandler('makeup', makeup_recruiter_experience))
+    dp.add_handler(CommandHandler('stylist', stylist_recruiter_experience))
+    dp.add_handler(CommandHandler('equipment', equipment_help))
+
+    updater.start_polling()
+    updater.idle()
+
+
+if __name__ == '__main__':
+    main()

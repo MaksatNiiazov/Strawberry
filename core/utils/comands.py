@@ -1,20 +1,9 @@
-from aiogram import Bot
-from aiogram.types import BotCommand, BotCommandScopeDefault
+from telegram import BotCommand
 
-
-async def set_commands(bot: Bot):
+def set_commands(bot):
     commands = [
-        BotCommand(
-            command='start',
-            description='Запустить бота'
-        ),
-        BotCommand(
-            command='about_platform',
-            description='О нашей платформе'
-        ),
-        BotCommand(
-            command='privacy_rules',
-            description='Правила Конфеденциальности'
-        )
+        BotCommand("start", "Запустить бота"),
+        BotCommand("about_platform", "О нашей платформе"),
+        BotCommand("privacy_rules", "Правила Конфиденциальности")
     ]
-    await bot.set_my_commands(commands, BotCommandScopeDefault())
+    bot.set_my_commands(commands)

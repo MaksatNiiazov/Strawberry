@@ -1,11 +1,10 @@
-
-from aiogram import Bot
-from aiogram.types import CallbackQuery
+from telegram import Update
+from telegram.ext import CallbackContext, CallbackQueryHandler
 
 from core.texts.models.texts import MODEL_ORDER_WEBCAM, MODEL_ORDER_DEFAULT
 
-
-async def check_model_experience(call: CallbackQuery, bot: Bot):
+def check_model_experience(update: Update, context: CallbackContext):
+    call = update.callback_query
     experience = call.data.split('_')[-1]
     if experience == 'yes':
         answer = 'sssssssssss'
@@ -13,11 +12,11 @@ async def check_model_experience(call: CallbackQuery, bot: Bot):
         answer = 'awwwedasd'
     else:
         answer = 'awwwedasd'
-    await call.message.answer(answer)
-    await call.answer()
+    call.message.reply_text(answer)
+    call.answer()
 
-
-async def model_order(call: CallbackQuery, bot: Bot):
+def model_order(update: Update, context: CallbackContext):
+    call = update.callback_query
     experience = call.data.split('_')[-1]
     if experience == 'webcam':
         answer = MODEL_ORDER_WEBCAM
@@ -26,5 +25,5 @@ async def model_order(call: CallbackQuery, bot: Bot):
     else:
         answer = 'awwwedasd'
 
-    await call.message.answer(answer)
-    await call.answer()
+    call.message.reply_text(answer)
+    call.answer()

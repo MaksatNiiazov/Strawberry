@@ -1,59 +1,58 @@
-import asyncio
 import logging
-
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from telegram import Update, Bot, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, CallbackQueryHandler, Filters
 
 import config
-from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform,\
+from core.hendlers.basic import start, get_photo, privacy_rules, get_video, model_recruiter_experience, about_platform, \
     photographer_recruiter_experience, stylist_recruiter_experience, makeup_recruiter_experience, equipment_help
 from core.hendlers.callback import check_model_experience, model_order
 from core.utils.comands import set_commands
 
 
-async def start_bot(bot: Bot):
-    await set_commands(bot)
-    await bot.send_message(config.ADMIN_CHAT_ID, text='Бот запущен')
+def start_bot(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text='Бот запущен')
+    set_commands(context.bot)  # Установка команд для бота
 
 
-async def stop_bot(bot: Bot):
-    await bot.send_message(config.ADMIN_CHAT_ID, text='Бот отключен')
+def stop_bot(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text='Бот отключен')
 
 
-async def main():
+def main():
     API_TOKEN = config.TELEGRAM_API_KEY
 
     logging.basicConfig(level=logging.INFO)
 
-    bot = Bot(API_TOKEN, parse_mode='HTML')
-    dp = Dispatcher()
-    dp.startup.register(start_bot)
-    dp.shutdown.register(stop_bot)
+    bot = Bot(API_TOKEN)
+    updater = Updater(API_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
 
-    dp.message.register(start, Command(commands=['start']))
-    dp.message.register(model_recruiter_experience, Command(commands=['model']))
-    dp.message.register(photographer_recruiter_experience, Command(commands=['photographer']))
-    dp.message.register(makeup_recruiter_experience, Command(commands=['makeup']))
-    dp.message.register(stylist_recruiter_experience, Command(commands=['stylist']))
-    dp.message.register(model_recruiter_experience, Command(commands=['model']))
-    dp.message.register(about_platform, Command(commands=['about_platform']))
-    dp.message.register(equipment_help, Command(commands=['equipment']))
+    # Регистрация обработчиков команд
+    dispatcher.add_handler(CommandHandler('start', start))
+    dispatcher.add_handler(CommandHandler('model', model_recruiter_experience))
+    dispatcher.add_handler(CommandHandler('photographer', photographer_recruiter_experience))
+    dispatcher.add_handler(CommandHandler('makeup', makeup_recruiter_experience))
+    dispatcher.add_handler(CommandHandler('stylist', stylist_recruiter_experience))
+    dispatcher.add_handler(CommandHandler('about_platform', about_platform))
+    dispatcher.add_handler(CommandHandler('equipment', equipment_help))
+    dispatcher.add_handler(CommandHandler('privacy_rules', privacy_rules))
 
-    dp.callback_query.register(model_order, F.data.startswith('model_order_'))
+    # Регистрация обработчиков для callback данных
+    dispatcher.add_handler(CallbackQueryHandler(model_order, pattern='^model_order_'))
+    dispatcher.add_handler(CallbackQueryHandler(check_model_experience, pattern='^model_experience_'))
 
-    dp.callback_query.register(check_model_experience, F.data.startswith('model_experience_'))
+    # Регистрация обработчиков для медиа
+    dispatcher.add_handler(MessageHandler(Filters.photo, get_photo))
+    dispatcher.add_handler(MessageHandler(Filters.video, get_video))
 
-    dp.message.register(get_photo, F.photo)
+    # Начало и завершение работы
+    dispatcher.add_handler(CommandHandler('start_bot', start_bot))
+    dispatcher.add_handler(CommandHandler('stop_bot', stop_bot))
 
-    dp.message.register(get_video, F.video)
-
-    dp.message.register(privacy_rules, Command(commands=['privacy_rules']))
-
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
+    # Запуск бота
+    updater.start_polling()
+    updater.idle()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
