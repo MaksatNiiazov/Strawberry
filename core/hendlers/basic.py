@@ -1,125 +1,98 @@
-import requests
+import asyncio
 import os
 from datetime import datetime
-import asyncio
-import config
 
+from aiogram import types, Bot, F
+
+import config
 from core.texts import basic
+from core.keyboards.inlines import model_experience
 from core.texts.models.texts import MODELING_TYPE_CHOICE, ABOUT_PLATFORM, MODEL_ORDER_DEFAULT, MODEL_ORDER_WEBCAM, \
     MODEL_EQUIPMENT
 from core.texts.photographer.texts import PHOTOGRAPHER_ORDER_DEFAULT
 
-API_URL = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/"
+
+async def start(message: types.Message):
+    await message.answer(basic.START_TEXT)
 
 
-# Функция для отправки сообщения
-async def send_message(chat_id, text, parse_mode='HTML'):
-    payload = {
-        'chat_id': chat_id,
-        'text': text,
-        'parse_mode': parse_mode
-    }
-    response = requests.post(f"{API_URL}sendMessage", json=payload)
-    return response.json()
-
-
-# Стартовая команда
-async def start(chat_id):
-    await send_message(chat_id, basic.START_TEXT)
-
-
-# Обработчик фотографий
-async def get_photo(message, bot_token):
-    user_name = message['from']['username']  # Получаем имя пользователя
-    chat_id = message['chat']['id']
+async def get_photo(message: types.Message, bot: Bot):
+    user_name = message.from_user.username  # Получаем имя пользователя
     folder_path = 'media/'
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
+    # folder_path += f'{type}/'
+    # if not os.path.exists(folder_path):
+    #     os.makedirs(folder_path)
+    folder_path += f'{user_name}/'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+    folder_path += f'photos'
 
-    folder_path += f'{user_name}/photos/'
+
+    # Проверяем, существует ли папка, и создаем ее, если необходимо
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    largest_photo = message['photo'][-1]
+    # Выбираем фото с наибольшим разрешением
+    largest_photo = message.photo[-1]
 
-    # Получение файла
-    file_id = largest_photo['file_id']
-    get_file_url = f"{API_URL}getFile?file_id={file_id}"
-    file_info = requests.get(get_file_url).json()
-
-    # Скачиваем файл
-    file_path = file_info['result']['file_path']
-    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+    file = await bot.get_file(largest_photo.file_id)
     unique_file_name = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3] + '.jpg'
+    await bot.download_file(file.file_path, f'{folder_path}/{unique_file_name}')
 
-    with open(f'{folder_path}/{unique_file_name}', 'wb') as file:
-        file.write(requests.get(download_url).content)
+    # Добавляем небольшую задержку, чтобы имена файлов были уникальными
+    await asyncio.sleep(0.001)
+    await bot.send_message(config.ADMIN_CHAT_ID, text=f'{user_name}')
+    await message.answer(f'Photo added to {user_name} portfolio')
 
-    await asyncio.sleep(0.001)  # Добавляем задержку для уникальности имен файлов
-    await send_message(config.ADMIN_CHAT_ID, f'{user_name}')  # Уведомляем админа
-    await send_message(chat_id, f'Photo added to {user_name} portfolio')  # Сообщаем пользователю
+async def get_video(message: types.Message, bot: Bot):
+    user_name = message.from_user.username  # Получаем имя пользователя
+    folder_path = f'media/{user_name}/videos/'  # Создаем путь к папке с именем пользователя
+    if not os.path.exists(folder_path):  # Проверяем, существует ли папка
+        os.makedirs(folder_path)  # Создаем папку, если она не существует
+    await message.answer(f'Video added to {user_name} portfolio')  # Отправляем сообщение с именем пользователя
 
+    if not os.path.exists(folder_path):  # Проверяем, существует ли папка
+        os.makedirs(folder_path)  # Создаем папку, если она не существует
 
-# Обработчик видео
-async def get_video(message, bot_token):
-    user_name = message['from']['username']
-    chat_id = message['chat']['id']
-    folder_path = f'media/{user_name}/videos/'
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-
-    await send_message(chat_id, f'Video added to {user_name} portfolio')
-
-    file_id = message['video']['file_id']
-    get_file_url = f"{API_URL}getFile?file_id={file_id}"
-    file_info = requests.get(get_file_url).json()
-
-    file_path = file_info['result']['file_path']
-    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+    # Обрабатываем видеофайл
+    file = await bot.get_file(message.video.file_id)
     unique_file_name = datetime.now().strftime('%Y%m%d%H%M%S') + '.mp4'
-
-    with open(f'{folder_path}/{unique_file_name}', 'wb') as file:
-        file.write(requests.get(download_url).content)
+    await bot.download_file(file.file_path, f'{folder_path}/{unique_file_name}')  # Сохраняем видео с уникальным именем
 
 
 ### MODEL ###
 
-# Опыт моделей
-async def model_recruiter_experience(chat_id):
-    await send_message(chat_id, MODELING_TYPE_CHOICE, parse_mode=None)
+async def model_recruiter_experience(message: types.Message, bot: Bot):
+    await message.answer(MODELING_TYPE_CHOICE, reply_markup=model_experience)
 
 
-# Правила конфиденциальности
-async def privacy_rules(chat_id):
-    await send_message(chat_id, basic.CONFIDENTIALITY_POLICY)
+async def privacy_rules(message: types.Message):
+    await message.answer(basic.CONFIDENTIALITY_POLICY)
 
 
-# О платформе
-async def about_platform(chat_id):
-    await send_message(chat_id, ABOUT_PLATFORM)
+async def about_platform(message: types.Message):
+    await message.answer(ABOUT_PLATFORM)
 
 
 ### MODEL_END ###
 
 ### PHOTOGRAPHER ###
 
-# Опыт фотографа
-async def photographer_recruiter_experience(chat_id):
-    await send_message(chat_id, PHOTOGRAPHER_ORDER_DEFAULT)
-
+async def photographer_recruiter_experience(message: types.Message):
+    await message.answer(PHOTOGRAPHER_ORDER_DEFAULT)
 
 ### PHOTOGRAPHER_END ###
 
-# Опыт визажиста
-async def makeup_recruiter_experience(chat_id):
-    await send_message(chat_id, 'В данный момент, к сожалению, нет открытых вакансий на позицию визажиста')
+
+async def makeup_recruiter_experience(message: types.Message):
+    await message.answer('В данный момент, к сожалению, нет открытых вакансий на позицию визажиста')
 
 
-# Опыт стилиста
-async def stylist_recruiter_experience(chat_id):
-    await send_message(chat_id, 'В данный момент, к сожалению, нет открытых вакансий на позицию стилиста')
+async def stylist_recruiter_experience(message: types.Message):
+    await message.answer('В данный момент, к сожалению, нет открытых вакансий на позицию стилиста')
 
 
-# Помощь с оборудованием
-async def equipment_help(chat_id):
-    await send_message(chat_id, MODEL_EQUIPMENT)
+async def equipment_help(message: types.Message):
+    await message.answer(MODEL_EQUIPMENT)

@@ -1,31 +1,20 @@
-import requests
-import config
-
-API_URL = f"https://api.telegram.org/bot{config.TELEGRAM_API_KEY}/setMyCommands"
+from aiogram import Bot
+from aiogram.types import BotCommand, BotCommandScopeDefault
 
 
-def set_commands():
+async def set_commands(bot: Bot):
     commands = [
-        {
-            'command': 'start',
-            'description': 'Запустить бота'
-        },
-        {
-            'command': 'about_platform',
-            'description': 'О нашей платформе'
-        },
-        {
-            'command': 'privacy_rules',
-            'description': 'Правила Конфиденциальности'
-        }
+        BotCommand(
+            command='start',
+            description='Запустить бота'
+        ),
+        BotCommand(
+            command='about_platform',
+            description='О нашей платформе'
+        ),
+        BotCommand(
+            command='privacy_rules',
+            description='Правила Конфеденциальности'
+        )
     ]
-
-    payload = {
-        'commands': commands,
-        'scope': {
-            'type': 'default'
-        }
-    }
-
-    response = requests.post(API_URL, json=payload)
-    return response.json()
+    await bot.set_my_commands(commands, BotCommandScopeDefault())
