@@ -24,9 +24,12 @@ from core.hendlers.basic import (
     equipment_help,
     get_photo,
     get_video,
+    help_command,
     makeup_recruiter_experience,
     model_recruiter_experience,
+    next_steps,
     photographer_recruiter_experience,
+    portfolio_requirements,
     privacy_rules,
     start,
     stylist_recruiter_experience,
@@ -62,6 +65,9 @@ def _register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("about_platform", about_platform))
     application.add_handler(CommandHandler("equipment", equipment_help))
     application.add_handler(CommandHandler("privacy_rules", privacy_rules))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("portfolio", portfolio_requirements))
+    application.add_handler(CommandHandler("next_steps", next_steps))
 
     application.add_handler(CallbackQueryHandler(model_order, pattern="^model_order_"))
 
