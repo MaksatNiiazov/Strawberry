@@ -1,9 +1,10 @@
-from telegram import BotCommand
+from telegram import Bot, BotCommand
 
-def set_commands(bot):
+
+async def set_commands(bot: Bot) -> None:
     commands = [
         BotCommand("start", "Запустить бота"),
         BotCommand("about_platform", "О нашей платформе"),
-        BotCommand("privacy_rules", "Правила Конфиденциальности")
+        BotCommand("privacy_rules", "Правила Конфиденциальности"),
     ]
-    bot.set_my_commands(commands)
+    await bot.set_my_commands(commands)
