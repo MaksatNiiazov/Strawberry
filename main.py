@@ -1,8 +1,8 @@
 import logging
+from contextlib import asynccontextmanager
 from typing import Optional
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -37,7 +37,6 @@ if not config.TELEGRAM_API_KEY:
 
 
 WEBHOOK_PATH = config.WEBHOOK_PATH if config.WEBHOOK_PATH.startswith("/") else f"/{config.WEBHOOK_PATH}"
-app = FastAPI()
 
 
 def _build_webhook_url() -> Optional[str]:
@@ -69,8 +68,8 @@ application = Application.builder().token(config.TELEGRAM_API_KEY).updater(None)
 _register_handlers(application)
 
 
-@app.on_event("startup")
-async def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecycle
     webhook_url = _build_webhook_url()
 
     await application.initialize()
@@ -85,37 +84,33 @@ async def on_startup() -> None:
     if config.ADMIN_CHAT_ID:
         await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот запущен")
 
+    yield
 
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
     if config.ADMIN_CHAT_ID:
         await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот отключен")
 
-    await application.bot.delete_webhook()
+    if application.bot:
+        await application.bot.delete_webhook()
+
     await application.stop()
     await application.shutdown()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     try:
         data = await request.json()
-    except Exception as exc:  # pragma: no cover - defensive
-        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
-
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+        update = Update.de_json(data, application.bot)
+        await application.process_update(update)
+    except Exception as e:  # pragma: no cover - defensive logging
+        logger.exception("Error processing Telegram update: %s", e)
+        return {"ok": False}
     return {"ok": True}
 
 
 @app.get("/")
 async def healthcheck():
     return {"status": "ok"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host=config.HOST,
-        port=config.PORT,
-    )
