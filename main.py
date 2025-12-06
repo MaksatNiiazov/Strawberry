@@ -16,7 +16,6 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
-    Updater,
     filters,
 )
 
@@ -43,153 +42,152 @@ from core.utils.comands import set_commands
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 if not config.TELEGRAM_API_KEY:
     raise RuntimeError("TELEGRAM_API_KEY must be set")
 
-# Work around python-telegram-bot 20.8 __slots__ incompatibility under Python 3.13
-if "__polling_cleanup_cb" not in Updater.__slots__:
-    Updater.__slots__ = (*Updater.__slots__, "__polling_cleanup_cb")
 
-def _register_handlers(application: Application) -> None:
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("model", model_recruiter_experience))
-    application.add_handler(CommandHandler("photographer", photographer_recruiter_experience))
-    application.add_handler(CommandHandler("makeup", makeup_recruiter_experience))
-    application.add_handler(CommandHandler("stylist", stylist_recruiter_experience))
-    application.add_handler(CommandHandler("about_platform", about_platform))
-    application.add_handler(CommandHandler("equipment", equipment_help))
-    application.add_handler(CommandHandler("privacy_rules", privacy_rules))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("portfolio", portfolio_requirements))
-    application.add_handler(CommandHandler("next_steps", next_steps))
-
-    application.add_handler(CallbackQueryHandler(model_order, pattern="^model_order_"))
-
-    application.add_handler(MessageHandler(filters.PHOTO, get_photo))
-    application.add_handler(MessageHandler(filters.VIDEO, get_video))
-
-    application.add_error_handler(error_handler)
-
+# ============================================================
+#   APPLICATION
+# ============================================================
 
 application = Application.builder().token(config.TELEGRAM_API_KEY).build()
-_polling_task: asyncio.Task | None = None
-_shutdown_event: asyncio.Event | None = None
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Log errors and notify admin/user without stopping the bot."""
+    logger.exception("Unhandled error", exc_info=context.error)
 
-    logger.exception("Unhandled exception during update processing", exc_info=context.error)
-
-    admin_text = "Произошла ошибка в боте"
+    msg = "Произошла ошибка"
     if context.error:
-        admin_text += f": {context.error}"
+        msg += f": {context.error}"
 
+    # уведомляем админа
     if config.ADMIN_CHAT_ID:
         try:
-            await context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=admin_text)
-        except Exception:  # pragma: no cover - best effort admin notification
-            logger.debug("Failed to notify admin about an unhandled exception")
+            await context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=msg)
+        except Exception:
+            pass
 
+    # уведомляем пользователя
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text("Произошла непредвиденная ошибка. Попробуйте позже.")
-        except Exception:  # pragma: no cover - best effort user notification
-            logger.debug("Failed to notify user about an unhandled exception")
+        except Exception:
+            pass
+
+
+# Регистрация хендлеров
+def _register_handlers(app: Application) -> None:
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("model", model_recruiter_experience))
+    app.add_handler(CommandHandler("photographer", photographer_recruiter_experience))
+    app.add_handler(CommandHandler("makeup", makeup_recruiter_experience))
+    app.add_handler(CommandHandler("stylist", stylist_recruiter_experience))
+    app.add_handler(CommandHandler("about_platform", about_platform))
+    app.add_handler(CommandHandler("equipment", equipment_help))
+    app.add_handler(CommandHandler("privacy_rules", privacy_rules))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("portfolio", portfolio_requirements))
+    app.add_handler(CommandHandler("next_steps", next_steps))
+
+    app.add_handler(CallbackQueryHandler(model_order, pattern="^model_order_"))
+
+    app.add_handler(MessageHandler(filters.PHOTO, get_photo))
+    app.add_handler(MessageHandler(filters.VIDEO, get_video))
+
+    app.add_error_handler(error_handler)
 
 
 _register_handlers(application)
 
 
-async def _run_resilient_polling(restart_delay: float = 5.0) -> None:
-    assert application.updater is not None
+# ============================================================
+#   POLLING LOOP (без Updater!)
+# ============================================================
 
-    while _shutdown_event and not _shutdown_event.is_set():
+_shutdown_event: asyncio.Event | None = None
+_polling_task: asyncio.Task | None = None
+
+
+async def _polling_loop() -> None:
+    """
+    Чистый polling, полностью совместимый с Python 3.13.
+    Не использует Updater.
+    Работает бесконечно, перезапускаясь при ошибках.
+    """
+    while not _shutdown_event.is_set():
         try:
-            await application.updater.start_polling(drop_pending_updates=True)
-            logger.info("Bot polling started")
+            await application.initialize()
+            await set_commands(application.bot)
 
-            if _shutdown_event:
-                await _shutdown_event.wait()
-        except Exception as exc:  # pragma: no cover - defensive restart
-            logger.exception("Polling crashed; restarting in %.1f seconds: %s", restart_delay, exc)
+            # удаляем webhook, чтобы Render не завис
+            try:
+                await application.bot.delete_webhook(drop_pending_updates=True)
+            except Exception:
+                logger.warning("Failed to delete webhook before polling")
 
-            if _shutdown_event and _shutdown_event.is_set():
-                break
+            logger.info("Starting polling…")
+            await application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                stop_signals=None,   # важно для serverless
+            )
 
-            await asyncio.sleep(restart_delay)
-        finally:
-            if application.updater.running:
-                try:
-                    await application.updater.stop()
-                except Exception as stop_exc:  # pragma: no cover - defensive stop
-                    logger.exception("Failed to stop polling cleanly: %s", stop_exc)
+        except Exception as exc:
+            logger.exception("Polling crashed: %s", exc)
+            await asyncio.sleep(5)
 
+
+# ============================================================
+#   FASTAPI LIFESPAN
+# ============================================================
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecycle
+async def lifespan(app: FastAPI):
+    global _shutdown_event, _polling_task
+
     Path("media").mkdir(parents=True, exist_ok=True)
-    global _polling_task, _shutdown_event
+
+    _shutdown_event = asyncio.Event()
+    _polling_task = asyncio.create_task(_polling_loop())
+
+    # уведомление админа о старте
+    if config.ADMIN_CHAT_ID:
+        try:
+            await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот запущен")
+        except Exception:
+            pass
+
+    yield
+
+    # SHUTDOWN
+    _shutdown_event.set()
+    await asyncio.sleep(0.1)
+
+    if _polling_task:
+        try:
+            await _polling_task
+        except Exception:
+            pass
+
+    # уведомление админа об остановке
+    if config.ADMIN_CHAT_ID:
+        try:
+            await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот остановлен")
+        except Exception:
+            pass
 
     try:
-        await application.initialize()
-        await set_commands(application.bot)
-
-        try:
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Existing webhooks removed; switching to polling mode")
-        except Exception as exc:  # pragma: no cover - defensive webhook cleanup
-            logger.exception("Failed to remove webhook before polling: %s", exc)
-
-        await application.start()
-
-        _shutdown_event = asyncio.Event()
-        _polling_task = asyncio.create_task(_run_resilient_polling())
-
-        if config.ADMIN_CHAT_ID:
-            try:
-                await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот запущен")
-            except Exception as exc:  # pragma: no cover - admin notification is optional
-                logger.exception("Failed to notify admin on startup: %s", exc)
-    except Exception as exc:  # pragma: no cover - keep service alive despite startup hiccups
-        logger.exception("Startup sequence failed: %s", exc)
-
-    try:
-        yield
-    finally:
-        if _shutdown_event:
-            _shutdown_event.set()
-
-        if _polling_task:
-            try:
-                await _polling_task
-            except Exception as exc:  # pragma: no cover - defensive polling wait
-                logger.exception("Polling task failed during shutdown: %s", exc)
-
-        if config.ADMIN_CHAT_ID:
-            try:
-                await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот отключен")
-            except Exception as exc:  # pragma: no cover - admin notification is optional
-                logger.exception("Failed to notify admin on shutdown: %s", exc)
-
-        if application.updater:
-            try:
-                await application.updater.stop()
-            except Exception as exc:  # pragma: no cover - defensive polling stop
-                logger.exception("Failed to stop polling cleanly: %s", exc)
-
-        try:
-            await application.stop()
-        except Exception as exc:  # pragma: no cover - defensive shutdown
-            logger.exception("Failed to stop application cleanly: %s", exc)
-
-        try:
-            await application.shutdown()
-        except Exception as exc:  # pragma: no cover - defensive shutdown
-            logger.exception("Failed to shutdown application cleanly: %s", exc)
+        await application.shutdown()
+    except Exception:
+        pass
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+# ============================================================
+#   API ROUTES
+# ============================================================
 
 @app.get("/")
 async def healthcheck():
@@ -199,7 +197,7 @@ async def healthcheck():
 def _create_media_archive(buffer: io.BytesIO, media_dir: Path) -> int:
     files = [p for p in media_dir.rglob("*") if p.is_file()]
 
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(buffer, "w", zipfile.ZZIP_DEFLATED) as zip_file:
         for file_path in files:
             zip_file.write(file_path, file_path.relative_to(media_dir))
 
@@ -213,7 +211,7 @@ async def media_page():
         <head><title>Media archive</title></head>
         <body>
             <h1>Download all uploaded media</h1>
-            <p><a href=\"/media/download\">Download archive</a></p>
+            <p><a href="/media/download">Download archive</a></p>
         </body>
     </html>
     """
@@ -233,6 +231,7 @@ async def download_media(background_tasks: BackgroundTasks):
 
     buffer.seek(0)
     filename = f"media_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.zip"
+
     background_tasks.add_task(shutil.rmtree, media_dir, ignore_errors=True)
 
     return StreamingResponse(
@@ -241,4 +240,3 @@ async def download_media(background_tasks: BackgroundTasks):
         headers={"Content-Disposition": f"attachment; filename={filename}"},
         background=background_tasks,
     )
-
