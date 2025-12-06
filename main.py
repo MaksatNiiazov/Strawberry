@@ -196,8 +196,3 @@ async def download_media(background_tasks: BackgroundTasks):
         background=background_tasks,
     )
 
-
-if __name__ == "__main__":  # pragma: no cover - convenience entrypoint
-    import uvicorn
-
-    uvicorn.run("main:app", host=config.HOST, port=config.PORT, log_level="info")
