@@ -29,11 +29,15 @@ async def _forward_media_to_admin(update: Update, context: ContextTypes.DEFAULT_
     if not (config.ADMIN_CHAT_ID and update.effective_message):
         return
 
-    await context.bot.forward_message(
-        chat_id=config.ADMIN_CHAT_ID,
-        from_chat_id=update.effective_chat.id,
-        message_id=update.effective_message.id,
-    )
+    try:
+        forwarded_message = await context.bot.forward_message(
+            chat_id=config.ADMIN_CHAT_ID,
+            from_chat_id=update.effective_chat.id,
+            message_id=update.effective_message.id,
+        )
+        logger.info("Forwarded message to admin: %s", forwarded_message)
+    except Exception as exc:  # pragma: no cover - defensive admin forwarding
+        logger.exception("Failed to forward media to admin: %s", exc)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -57,7 +61,12 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         os.makedirs(folder_path, exist_ok=True)
 
         largest_photo = update.message.photo[-1]
-        file = await context.bot.get_file(largest_photo.file_id)
+        try:
+            file = await context.bot.get_file(largest_photo.file_id)
+            logger.info("FILE INFO: %s", file)
+        except Exception as exc:
+            logger.exception("Failed to retrieve photo file: %s", exc)
+            raise
         unique_file_name = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3] + ".jpg"
         await file.download_to_drive(custom_path=os.path.join(folder_path, unique_file_name))
 
@@ -91,7 +100,12 @@ async def get_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         folder_path = _user_folder(user_name, "videos")
         os.makedirs(folder_path, exist_ok=True)
 
-        file = await context.bot.get_file(update.message.video.file_id)
+        try:
+            file = await context.bot.get_file(update.message.video.file_id)
+            logger.info("FILE INFO: %s", file)
+        except Exception as exc:
+            logger.exception("Failed to retrieve video file: %s", exc)
+            raise
         unique_file_name = datetime.now().strftime("%Y%m%d%H%M%S") + ".mp4"
         await file.download_to_drive(custom_path=os.path.join(folder_path, unique_file_name))
 

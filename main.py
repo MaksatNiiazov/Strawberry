@@ -108,6 +108,7 @@ _register_handlers(application)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecycle
+    Path("media").mkdir(parents=True, exist_ok=True)
     webhook_url = _build_webhook_url()
 
     try:
