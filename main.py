@@ -16,6 +16,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    Updater,
     filters,
 )
 
@@ -44,6 +45,10 @@ logger = logging.getLogger(__name__)
 
 if not config.TELEGRAM_API_KEY:
     raise RuntimeError("TELEGRAM_API_KEY must be set")
+
+# Work around python-telegram-bot 20.8 __slots__ incompatibility under Python 3.13
+if "__polling_cleanup_cb" not in Updater.__slots__:
+    Updater.__slots__ = (*Updater.__slots__, "__polling_cleanup_cb")
 
 def _register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start))
