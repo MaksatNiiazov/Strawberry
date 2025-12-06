@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import shutil
@@ -5,9 +6,8 @@ import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
 from telegram import Update
 from telegram.ext import (
@@ -45,18 +45,6 @@ logger = logging.getLogger(__name__)
 if not config.TELEGRAM_API_KEY:
     raise RuntimeError("TELEGRAM_API_KEY must be set")
 
-
-WEBHOOK_PATH = config.WEBHOOK_PATH if config.WEBHOOK_PATH.startswith("/") else f"/{config.WEBHOOK_PATH}"
-
-
-def _build_webhook_url() -> Optional[str]:
-    if not config.WEBHOOK_URL:
-        logger.warning("WEBHOOK_URL is not set. Webhook will not be configured.")
-        return None
-
-    return f"{config.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
-
-
 def _register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("model", model_recruiter_experience))
@@ -78,7 +66,9 @@ def _register_handlers(application: Application) -> None:
     application.add_error_handler(error_handler)
 
 
-application = Application.builder().token(config.TELEGRAM_API_KEY).updater(None).build()
+application = Application.builder().token(config.TELEGRAM_API_KEY).build()
+_polling_task: asyncio.Task | None = None
+_shutdown_event: asyncio.Event | None = None
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -106,23 +96,50 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 _register_handlers(application)
 
 
+async def _run_resilient_polling(restart_delay: float = 5.0) -> None:
+    assert application.updater is not None
+
+    while _shutdown_event and not _shutdown_event.is_set():
+        try:
+            await application.updater.start_polling(drop_pending_updates=True)
+            logger.info("Bot polling started")
+
+            if _shutdown_event:
+                await _shutdown_event.wait()
+        except Exception as exc:  # pragma: no cover - defensive restart
+            logger.exception("Polling crashed; restarting in %.1f seconds: %s", restart_delay, exc)
+
+            if _shutdown_event and _shutdown_event.is_set():
+                break
+
+            await asyncio.sleep(restart_delay)
+        finally:
+            if application.updater.running:
+                try:
+                    await application.updater.stop()
+                except Exception as stop_exc:  # pragma: no cover - defensive stop
+                    logger.exception("Failed to stop polling cleanly: %s", stop_exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecycle
     Path("media").mkdir(parents=True, exist_ok=True)
-    webhook_url = _build_webhook_url()
+    global _polling_task, _shutdown_event
 
     try:
         await application.initialize()
         await set_commands(application.bot)
 
-        if webhook_url:
-            try:
-                await application.bot.set_webhook(webhook_url)
-                logger.info("Webhook set to %s", webhook_url)
-            except Exception as exc:  # pragma: no cover - defensive webhook setup
-                logger.exception("Failed to set webhook: %s", exc)
+        try:
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Existing webhooks removed; switching to polling mode")
+        except Exception as exc:  # pragma: no cover - defensive webhook cleanup
+            logger.exception("Failed to remove webhook before polling: %s", exc)
 
         await application.start()
+
+        _shutdown_event = asyncio.Event()
+        _polling_task = asyncio.create_task(_run_resilient_polling())
 
         if config.ADMIN_CHAT_ID:
             try:
@@ -135,17 +152,26 @@ async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecyc
     try:
         yield
     finally:
+        if _shutdown_event:
+            _shutdown_event.set()
+
+        if _polling_task:
+            try:
+                await _polling_task
+            except Exception as exc:  # pragma: no cover - defensive polling wait
+                logger.exception("Polling task failed during shutdown: %s", exc)
+
         if config.ADMIN_CHAT_ID:
             try:
                 await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот отключен")
             except Exception as exc:  # pragma: no cover - admin notification is optional
                 logger.exception("Failed to notify admin on shutdown: %s", exc)
 
-        if application.bot and webhook_url:
+        if application.updater:
             try:
-                await application.bot.delete_webhook()
-            except Exception as exc:  # pragma: no cover - defensive webhook cleanup
-                logger.exception("Failed to delete webhook: %s", exc)
+                await application.updater.stop()
+            except Exception as exc:  # pragma: no cover - defensive polling stop
+                logger.exception("Failed to stop polling cleanly: %s", exc)
 
         try:
             await application.stop()
@@ -159,19 +185,6 @@ async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecyc
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-@app.post(WEBHOOK_PATH)
-async def telegram_webhook(request: Request):
-    try:
-        data = await request.json()
-        update = Update.de_json(data, application.bot)
-        await application.process_update(update)
-    except Exception as e:  # pragma: no cover - defensive logging
-        logger.exception("Error processing Telegram update: %s", e)
-        return {"ok": False}
-    return {"ok": True}
-
 
 @app.get("/")
 async def healthcheck():
