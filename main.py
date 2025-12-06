@@ -1,8 +1,14 @@
+import io
 import logging
+import shutil
+import zipfile
 from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -114,3 +120,50 @@ async def telegram_webhook(request: Request):
 @app.get("/")
 async def healthcheck():
     return {"status": "ok"}
+
+
+def _create_media_archive(buffer: io.BytesIO, media_dir: Path) -> int:
+    files = [p for p in media_dir.rglob("*") if p.is_file()]
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for file_path in files:
+            zip_file.write(file_path, file_path.relative_to(media_dir))
+
+    return len(files)
+
+
+@app.get("/media", response_class=HTMLResponse)
+async def media_page():
+    return """
+    <html>
+        <head><title>Media archive</title></head>
+        <body>
+            <h1>Download all uploaded media</h1>
+            <p><a href=\"/media/download\">Download archive</a></p>
+        </body>
+    </html>
+    """
+
+
+@app.get("/media/download")
+async def download_media(background_tasks: BackgroundTasks):
+    media_dir = Path("media")
+    if not media_dir.exists():
+        return {"error": "No media available"}
+
+    buffer = io.BytesIO()
+    file_count = _create_media_archive(buffer, media_dir)
+
+    if file_count == 0:
+        return {"error": "No media files found"}
+
+    buffer.seek(0)
+    filename = f"media_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.zip"
+    background_tasks.add_task(shutil.rmtree, media_dir, ignore_errors=True)
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        background=background_tasks,
+    )

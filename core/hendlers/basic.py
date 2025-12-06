@@ -21,6 +21,17 @@ def _user_folder(username: Optional[str], folder: str) -> str:
     return os.path.join("media", safe_name, folder)
 
 
+async def _forward_media_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not (config.ADMIN_CHAT_ID and update.effective_message):
+        return
+
+    await context.bot.forward_message(
+        chat_id=config.ADMIN_CHAT_ID,
+        from_chat_id=update.effective_chat.id,
+        message_id=update.effective_message.id,
+    )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_chat.send_message(text=basic.START_TEXT)
 
@@ -28,6 +39,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.photo:
         return
+
+    await _forward_media_to_admin(update, context)
 
     user_name = update.message.from_user.username if update.message.from_user else "anonymous"
     folder_path = _user_folder(user_name, "photos")
@@ -47,6 +60,8 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def get_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.video:
         return
+
+    await _forward_media_to_admin(update, context)
 
     user_name = update.message.from_user.username if update.message.from_user else "anonymous"
     folder_path = _user_folder(user_name, "videos")
