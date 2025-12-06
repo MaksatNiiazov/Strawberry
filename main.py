@@ -14,6 +14,7 @@ from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -74,8 +75,34 @@ def _register_handlers(application: Application) -> None:
     application.add_handler(MessageHandler(filters.PHOTO, get_photo))
     application.add_handler(MessageHandler(filters.VIDEO, get_video))
 
+    application.add_error_handler(error_handler)
+
 
 application = Application.builder().token(config.TELEGRAM_API_KEY).updater(None).build()
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log errors and notify admin/user without stopping the bot."""
+
+    logger.exception("Unhandled exception during update processing", exc_info=context.error)
+
+    admin_text = "Произошла ошибка в боте"
+    if context.error:
+        admin_text += f": {context.error}"
+
+    if config.ADMIN_CHAT_ID:
+        try:
+            await context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=admin_text)
+        except Exception:  # pragma: no cover - best effort admin notification
+            logger.debug("Failed to notify admin about an unhandled exception")
+
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text("Произошла непредвиденная ошибка. Попробуйте позже.")
+        except Exception:  # pragma: no cover - best effort user notification
+            logger.debug("Failed to notify user about an unhandled exception")
+
+
 _register_handlers(application)
 
 
