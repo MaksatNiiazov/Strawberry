@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
 from telegram import Update
+from telegram.error import RetryAfter
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -42,16 +43,13 @@ from core.utils.comands import set_commands
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 if not config.TELEGRAM_API_KEY:
     raise RuntimeError("TELEGRAM_API_KEY must be set")
 
-
-# ============================================================
-#   APPLICATION
-# ============================================================
-
 application = Application.builder().token(config.TELEGRAM_API_KEY).build()
+
+# Флаг — установлены ли уже команды
+commands_were_set = False
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -61,22 +59,19 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if context.error:
         msg += f": {context.error}"
 
-    # уведомляем админа
     if config.ADMIN_CHAT_ID:
         try:
             await context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=msg)
         except Exception:
             pass
 
-    # уведомляем пользователя
     if isinstance(update, Update) and update.effective_message:
         try:
-            await update.effective_message.reply_text("Произошла непредвиденная ошибка. Попробуйте позже.")
+            await update.effective_message.reply_text("Произошла ошибка. Попробуйте позже.")
         except Exception:
             pass
 
 
-# Регистрация хендлеров
 def _register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("model", model_recruiter_experience))
@@ -91,7 +86,6 @@ def _register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("next_steps", next_steps))
 
     app.add_handler(CallbackQueryHandler(model_order, pattern="^model_order_"))
-
     app.add_handler(MessageHandler(filters.PHOTO, get_photo))
     app.add_handler(MessageHandler(filters.VIDEO, get_video))
 
@@ -100,46 +94,56 @@ def _register_handlers(app: Application) -> None:
 
 _register_handlers(application)
 
-
-# ============================================================
-#   POLLING LOOP (без Updater!)
-# ============================================================
-
-_shutdown_event: asyncio.Event | None = None
-_polling_task: asyncio.Task | None = None
+_shutdown_event = None
+_polling_task = None
 
 
-async def _polling_loop() -> None:
-    """
-    Чистый polling, полностью совместимый с Python 3.13.
-    Не использует Updater.
-    Работает бесконечно, перезапускаясь при ошибках.
-    """
+async def _safe_set_commands(bot):
+    global commands_were_set
+
+    # Устанавливаем команды только один раз
+    if commands_were_set:
+        return
+
+    try:
+        await set_commands(bot)
+        commands_were_set = True
+        logger.info("Bot commands set successfully")
+
+    except RetryAfter as e:
+        logger.warning(f"Flood control on setMyCommands, skipping ({e.retry_after}s)")
+        # НЕ повторяем вызов, чтобы не попасть в бесконечный цикл
+        commands_were_set = True
+
+    except Exception as e:
+        logger.warning(f"Failed to set bot commands: {e}")
+        commands_were_set = True
+
+
+async def _polling_loop():
     while not _shutdown_event.is_set():
         try:
             await application.initialize()
-            await set_commands(application.bot)
 
-            # удаляем webhook, чтобы Render не завис
+            # безопасный вызов без падений
+            await _safe_set_commands(application.bot)
+
             try:
                 await application.bot.delete_webhook(drop_pending_updates=True)
             except Exception:
-                logger.warning("Failed to delete webhook before polling")
+                pass
 
             logger.info("Starting polling…")
+
             await application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
-                stop_signals=None,   # важно для serverless
+                stop_signals=None,
             )
 
         except Exception as exc:
-            logger.exception("Polling crashed: %s", exc)
+            logger.exception(f"Polling crashed: {exc}")
             await asyncio.sleep(5)
 
-
-# ============================================================
-#   FASTAPI LIFESPAN
-# ============================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -150,7 +154,6 @@ async def lifespan(app: FastAPI):
     _shutdown_event = asyncio.Event()
     _polling_task = asyncio.create_task(_polling_loop())
 
-    # уведомление админа о старте
     if config.ADMIN_CHAT_ID:
         try:
             await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот запущен")
@@ -159,7 +162,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # SHUTDOWN
     _shutdown_event.set()
     await asyncio.sleep(0.1)
 
@@ -169,7 +171,6 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
-    # уведомление админа об остановке
     if config.ADMIN_CHAT_ID:
         try:
             await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот остановлен")
@@ -185,10 +186,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-# ============================================================
-#   API ROUTES
-# ============================================================
-
 @app.get("/")
 async def healthcheck():
     return {"status": "ok"}
@@ -197,7 +194,7 @@ async def healthcheck():
 def _create_media_archive(buffer: io.BytesIO, media_dir: Path) -> int:
     files = [p for p in media_dir.rglob("*") if p.is_file()]
 
-    with zipfile.ZipFile(buffer, "w", zipfile.ZZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for file_path in files:
             zip_file.write(file_path, file_path.relative_to(media_dir))
 
