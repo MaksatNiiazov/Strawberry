@@ -72,28 +72,51 @@ _register_handlers(application)
 async def lifespan(app: FastAPI):  # pragma: no cover - startup/shutdown lifecycle
     webhook_url = _build_webhook_url()
 
-    await application.initialize()
-    await set_commands(application.bot)
+    try:
+        await application.initialize()
+        await set_commands(application.bot)
 
-    if webhook_url:
-        await application.bot.set_webhook(webhook_url)
-        logger.info("Webhook set to %s", webhook_url)
+        if webhook_url:
+            try:
+                await application.bot.set_webhook(webhook_url)
+                logger.info("Webhook set to %s", webhook_url)
+            except Exception as exc:  # pragma: no cover - defensive webhook setup
+                logger.exception("Failed to set webhook: %s", exc)
 
-    await application.start()
+        await application.start()
 
-    if config.ADMIN_CHAT_ID:
-        await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот запущен")
+        if config.ADMIN_CHAT_ID:
+            try:
+                await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот запущен")
+            except Exception as exc:  # pragma: no cover - admin notification is optional
+                logger.exception("Failed to notify admin on startup: %s", exc)
+    except Exception as exc:  # pragma: no cover - keep service alive despite startup hiccups
+        logger.exception("Startup sequence failed: %s", exc)
 
-    yield
+    try:
+        yield
+    finally:
+        if config.ADMIN_CHAT_ID:
+            try:
+                await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот отключен")
+            except Exception as exc:  # pragma: no cover - admin notification is optional
+                logger.exception("Failed to notify admin on shutdown: %s", exc)
 
-    if config.ADMIN_CHAT_ID:
-        await application.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text="Бот отключен")
+        if application.bot and webhook_url:
+            try:
+                await application.bot.delete_webhook()
+            except Exception as exc:  # pragma: no cover - defensive webhook cleanup
+                logger.exception("Failed to delete webhook: %s", exc)
 
-    if application.bot:
-        await application.bot.delete_webhook()
+        try:
+            await application.stop()
+        except Exception as exc:  # pragma: no cover - defensive shutdown
+            logger.exception("Failed to stop application cleanly: %s", exc)
 
-    await application.stop()
-    await application.shutdown()
+        try:
+            await application.shutdown()
+        except Exception as exc:  # pragma: no cover - defensive shutdown
+            logger.exception("Failed to shutdown application cleanly: %s", exc)
 
 
 app = FastAPI(lifespan=lifespan)
