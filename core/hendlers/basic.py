@@ -36,6 +36,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_chat.send_message(text=basic.START_TEXT)
 
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message:
+        await update.message.reply_text(basic.HELP_TEXT)
+
+
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.photo:
         return
@@ -92,6 +97,11 @@ async def about_platform(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(ABOUT_PLATFORM)
 
 
+async def portfolio_requirements(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message:
+        await update.message.reply_text(basic.PORTFOLIO_REQUIREMENTS)
+
+
 async def photographer_recruiter_experience(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message:
         await update.message.reply_text(PHOTOGRAPHER_ORDER_DEFAULT)
@@ -114,3 +124,8 @@ async def stylist_recruiter_experience(update: Update, context: ContextTypes.DEF
 async def equipment_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message:
         await update.message.reply_text(MODEL_EQUIPMENT)
+
+
+async def next_steps(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message:
+        await update.message.reply_text(basic.NEXT_STEPS)
