@@ -31,7 +31,7 @@ from core.hendlers.basic import (
     start,
     stylist_recruiter_experience,
 )
-from core.hendlers.callback import check_model_experience, model_order
+from core.hendlers.callback import model_order
 from core.utils.comands import set_commands
 
 
@@ -64,7 +64,6 @@ def _register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("privacy_rules", privacy_rules))
 
     application.add_handler(CallbackQueryHandler(model_order, pattern="^model_order_"))
-    application.add_handler(CallbackQueryHandler(check_model_experience, pattern="^model_experience_"))
 
     application.add_handler(MessageHandler(filters.PHOTO, get_photo))
     application.add_handler(MessageHandler(filters.VIDEO, get_video))
