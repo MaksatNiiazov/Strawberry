@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime
 from typing import Optional
@@ -14,6 +15,9 @@ from core.texts.models.texts import (
     MODEL_EQUIPMENT,
 )
 from core.texts.photographer.texts import PHOTOGRAPHER_ORDER_DEFAULT
+
+
+logger = logging.getLogger(__name__)
 
 
 def _user_folder(username: Optional[str], folder: str) -> str:
@@ -45,38 +49,66 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.photo:
         return
 
-    await _forward_media_to_admin(update, context)
+    try:
+        await _forward_media_to_admin(update, context)
 
-    user_name = update.message.from_user.username if update.message.from_user else "anonymous"
-    folder_path = _user_folder(user_name, "photos")
-    os.makedirs(folder_path, exist_ok=True)
+        user_name = update.message.from_user.username if update.message.from_user else "anonymous"
+        folder_path = _user_folder(user_name, "photos")
+        os.makedirs(folder_path, exist_ok=True)
 
-    largest_photo = update.message.photo[-1]
-    file = await context.bot.get_file(largest_photo.file_id)
-    unique_file_name = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3] + ".jpg"
-    await file.download_to_drive(custom_path=os.path.join(folder_path, unique_file_name))
+        largest_photo = update.message.photo[-1]
+        file = await context.bot.get_file(largest_photo.file_id)
+        unique_file_name = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3] + ".jpg"
+        await file.download_to_drive(custom_path=os.path.join(folder_path, unique_file_name))
 
-    if config.ADMIN_CHAT_ID:
-        await context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=user_name)
+        if config.ADMIN_CHAT_ID:
+            await context.bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=user_name)
 
-    await update.message.reply_text(f"Photo added to {user_name} portfolio")
+        await update.message.reply_text(f"Photo added to {user_name} portfolio")
+    except Exception as exc:  # pragma: no cover - defensive media handling
+        logger.exception("Failed to process photo: %s", exc)
+        if config.ADMIN_CHAT_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=config.ADMIN_CHAT_ID,
+                    text=f"Не удалось обработать фото пользователя: {exc}",
+                )
+            except Exception:  # pragma: no cover - best-effort notification
+                logger.debug("Admin notification failed during photo error handling")
+
+        if update.message:
+            await update.message.reply_text("Произошла ошибка при обработке фото. Попробуйте позже.")
 
 
 async def get_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.video:
         return
 
-    await _forward_media_to_admin(update, context)
+    try:
+        await _forward_media_to_admin(update, context)
 
-    user_name = update.message.from_user.username if update.message.from_user else "anonymous"
-    folder_path = _user_folder(user_name, "videos")
-    os.makedirs(folder_path, exist_ok=True)
+        user_name = update.message.from_user.username if update.message.from_user else "anonymous"
+        folder_path = _user_folder(user_name, "videos")
+        os.makedirs(folder_path, exist_ok=True)
 
-    file = await context.bot.get_file(update.message.video.file_id)
-    unique_file_name = datetime.now().strftime("%Y%m%d%H%M%S") + ".mp4"
-    await file.download_to_drive(custom_path=os.path.join(folder_path, unique_file_name))
+        file = await context.bot.get_file(update.message.video.file_id)
+        unique_file_name = datetime.now().strftime("%Y%m%d%H%M%S") + ".mp4"
+        await file.download_to_drive(custom_path=os.path.join(folder_path, unique_file_name))
 
-    await update.message.reply_text(f"Video added to {user_name} portfolio")
+        await update.message.reply_text(f"Video added to {user_name} portfolio")
+    except Exception as exc:  # pragma: no cover - defensive media handling
+        logger.exception("Failed to process video: %s", exc)
+        if config.ADMIN_CHAT_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=config.ADMIN_CHAT_ID,
+                    text=f"Не удалось обработать видео пользователя: {exc}",
+                )
+            except Exception:  # pragma: no cover - best-effort notification
+                logger.debug("Admin notification failed during video error handling")
+
+        if update.message:
+            await update.message.reply_text("Произошла ошибка при обработке видео. Попробуйте позже.")
 
 
 async def model_recruiter_experience(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
