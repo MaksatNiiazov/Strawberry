@@ -127,6 +127,7 @@ async def lifespan(app: FastAPI):
     Path("media").mkdir(parents=True, exist_ok=True)
 
     await application.initialize()
+    await application.start()
 
     # set commands
     try:
@@ -157,6 +158,11 @@ async def lifespan(app: FastAPI):
     # remove webhook
     try:
         await application.bot.delete_webhook()
+    except Exception:
+        pass
+
+    try:
+        await application.stop()
     except Exception:
         pass
 
