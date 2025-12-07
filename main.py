@@ -206,14 +206,15 @@ async def root():
 # ---------------------------------------------------------
 # Telegram Webhook Receiver
 # ---------------------------------------------------------
-
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
-    await application.update_queue.put(update)
-    return {"ok": True}
 
+    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ
+    await application.process_update(update)
+
+    return {"ok": True}
 
 # ---------------------------------------------------------
 # Media archive endpoints
