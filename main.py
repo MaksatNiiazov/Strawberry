@@ -127,6 +127,7 @@ async def lifespan(app: FastAPI):
     Path("media").mkdir(parents=True, exist_ok=True)
 
     await application.initialize()
+    await application.start()
 
     # set commands
     try:
@@ -174,6 +175,11 @@ async def lifespan(app: FastAPI):
             await application.stop()
         except Exception:
             pass
+
+    try:
+        await application.stop()
+    except Exception:
+        pass
 
     try:
         await application.shutdown()
