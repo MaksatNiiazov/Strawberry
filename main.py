@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 import shutil
@@ -54,8 +53,11 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API_KEY = config.TELEGRAM_API_KEY
 ADMIN_CHAT_ID = config.ADMIN_CHAT_ID
 
+if not config.WEBHOOK_URL:
+    raise RuntimeError("WEBHOOK_URL must be set to configure the Telegram webhook")
+
 WEBHOOK_URL = config.WEBHOOK_URL.rstrip("/")      # https://example.onrender.com
-WEBHOOK_PATH = config.WEBHOOK_PATH                # /telegram/webhook
+WEBHOOK_PATH = config.WEBHOOK_PATH if config.WEBHOOK_PATH.startswith("/") else f"/{config.WEBHOOK_PATH}"
 FULL_WEBHOOK_URL = f"{WEBHOOK_URL}{WEBHOOK_PATH}" # https://.../telegram/webhook
 
 if not TELEGRAM_API_KEY:
@@ -241,3 +243,5 @@ async def download_media(background_tasks: BackgroundTasks):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
