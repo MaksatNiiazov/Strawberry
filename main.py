@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 import shutil
@@ -54,8 +53,11 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API_KEY = config.TELEGRAM_API_KEY
 ADMIN_CHAT_ID = config.ADMIN_CHAT_ID
 
+if not config.WEBHOOK_URL:
+    raise RuntimeError("WEBHOOK_URL must be set to configure the Telegram webhook")
+
 WEBHOOK_URL = config.WEBHOOK_URL.rstrip("/")      # https://example.onrender.com
-WEBHOOK_PATH = config.WEBHOOK_PATH                # /telegram/webhook
+WEBHOOK_PATH = config.WEBHOOK_PATH if config.WEBHOOK_PATH.startswith("/") else f"/{config.WEBHOOK_PATH}"
 FULL_WEBHOOK_URL = f"{WEBHOOK_URL}{WEBHOOK_PATH}" # https://.../telegram/webhook
 
 if not TELEGRAM_API_KEY:
@@ -133,15 +135,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Cannot set commands: {e}")
 
-    # delete previous webhook
+    # delete previous webhook and drop pending updates
     try:
-        await application.bot.delete_webhook()
-    except Exception:
-        pass
+        await application.bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        logger.warning(f"Cannot delete webhook before setting a new one: {e}")
 
     # install new webhook
-    await application.bot.set_webhook(FULL_WEBHOOK_URL)
+    await application.bot.set_webhook(
+        FULL_WEBHOOK_URL,
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+    )
     logger.info(f"Webhook set: {FULL_WEBHOOK_URL}")
+
+    await application.start()
 
     # notify admin
     if ADMIN_CHAT_ID:
@@ -155,6 +163,11 @@ async def lifespan(app: FastAPI):
     # remove webhook
     try:
         await application.bot.delete_webhook()
+    except Exception:
+        pass
+
+    try:
+        await application.stop()
     except Exception:
         pass
 
@@ -188,7 +201,7 @@ async def root():
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+    await application.update_queue.put(update)
     return {"ok": True}
 
 
@@ -241,3 +254,5 @@ async def download_media(background_tasks: BackgroundTasks):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
