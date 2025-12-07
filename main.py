@@ -150,7 +150,10 @@ async def lifespan(app: FastAPI):
     )
     logger.info(f"Webhook set: {FULL_WEBHOOK_URL}")
 
-    await application.start()
+    if application.running:
+        logger.info("Telegram application already running; skipping start")
+    else:
+        await application.start()
 
     # notify admin
     if ADMIN_CHAT_ID:
@@ -166,6 +169,12 @@ async def lifespan(app: FastAPI):
         await application.bot.delete_webhook()
     except Exception:
         pass
+
+    if application.running:
+        try:
+            await application.stop()
+        except Exception:
+            pass
 
     try:
         await application.stop()
