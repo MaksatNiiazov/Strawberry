@@ -136,15 +136,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Cannot set commands: {e}")
 
-    # delete previous webhook
+    # delete previous webhook and drop pending updates
     try:
-        await application.bot.delete_webhook()
-    except Exception:
-        pass
+        await application.bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        logger.warning(f"Cannot delete webhook before setting a new one: {e}")
 
     # install new webhook
-    await application.bot.set_webhook(FULL_WEBHOOK_URL)
+    await application.bot.set_webhook(
+        FULL_WEBHOOK_URL,
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+    )
     logger.info(f"Webhook set: {FULL_WEBHOOK_URL}")
+
+    await application.start()
 
     # notify admin
     if ADMIN_CHAT_ID:
@@ -196,7 +202,7 @@ async def root():
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+    await application.update_queue.put(update)
     return {"ok": True}
 
 
